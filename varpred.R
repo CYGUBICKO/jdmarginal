@@ -15,11 +15,75 @@
 #'
 varpred <- function(mod, focal, isolate = FALSE
 	, isoValue = NULL, level = 0.05, steps = 101, vv = NULL) {
-	beta_hat <- extractcoef(mod)
-	rframe <- model.frame(mod)
-	checkframe <- model.frame(focal, rframe)
-	modTerms <- delete.response(terms(mod))
-	mm <- model.matrix(modTerms, rframe)
+	focalForm <- as.formula(paste0("~", focal))
+	updateForm <- as.formula(paste0(".~. + ", focal))
+	updateMod <- update(mod, updateForm)
+	betahat <- extractcoef(updateMod)
+	modFrame <- model.frame(updateMod)
+	modTerms <- delete.response(terms(updateMod))
+	modMat <- model.matrix(modTerms, modFrame)
+	modLabels <- attr(modTerms, "term.labels")
+	
+	## Better way to do this?
+	focalVar <- attr(terms(focalForm), "term.labels")
+
+	if(is.null(vv)) {vv <- varfun(modFrame[[focalVar]], steps)}
+  	steps <- length(vv)
+	
+	rowMean <- matrix(apply(modMat, 2, mean), nrow = 1)
+	modMean <- rowMean[rep(1, steps), ]
+
+	# Model matrix with progression of focal variable
+	varFrame <- modFrame[rep(1, steps), ]
+	varFrame[focalVar] <- vv
+	newMat <- model.matrix(modTerms, varFrame)
+
+	## Better way to do this?
+	colNames <- colnames(modMat)
+	focalCols <- grepl(focalVar, colNames)
+	modVar <- modMean
+	modVar[, focalCols] <- newMat[, focalCols]
+  
+	vc <- vcov(updateMod)
+	if (inherits(updateMod, "clmm")){
+		f <- c(names(updateMod$alpha)[[1]], names(updateMod$beta))
+		vc <- vc[f, f]
+	}
+
+	if(!identical(colNames, names(betahat))){
+		print(setdiff(colNames, names(betahat)))
+		print(setdiff(names(betahat), colNames))
+		stop("Effect names do not match: check for empty factor levels?")
+	}
+  	pred <- modVar %*% betahat
+
+	# (Centered) predictions for SEs
+	if (isolate) {
+		if(!is.null(isoValue)){
+			modFrame[focalVar] <- 0*modFrame[focalVar]+isoValue
+			modMat <- model.matrix(modTerms, modFrame)
+			modMean <- matrix(apply(modMat, 2, mean), nrow=1)
+			modMean <- modMean[rep(1, steps), ]
+		}
+		modVar <- modVar - modMean
+	}
+
+	pse_var <- sqrt(diag(modVar %*% tcrossprod(data.matrix(vc), modVar)))
+	
+	# Stats
+	df <- ifelse(
+		grepl("df.residual", paste(names(mod), collapse=""))
+		, mod$df.residual, dfspec
+	)
+	mult <- qt(1-level/2, df)
+
+	df <- data.frame(var = vv
+		, fit = pred
+		, lwr = pred - mult*pse_var
+		, upr = pred + mult*pse_var
+	)
+  	names(df)[[1]] <- focal
+	return(df)
 }
 
 #' Extract model coefficients

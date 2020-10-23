@@ -12,8 +12,6 @@ vim_session:
 
 Sources += $(wildcard *.md *.R *.rmd)
 
-## MREB.review.md
-
 automatic_makeR = defined
 
 ######################################################################
