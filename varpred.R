@@ -19,7 +19,8 @@ varpred <- function(mod, focal, isolate = FALSE
 	updateForm <- as.formula(paste0(".~. + ", focal))
 	updateMod <- update(mod, updateForm)
 	betahat <- extractcoef(updateMod)
-	modFrame <- model.frame(updateMod)
+	xlevels <- mod$xlevels
+	modFrame <- model.frame(updateMod, xlev = xlevels, drop.unused.levels = TRUE)
 	modTerms <- delete.response(terms(updateMod))
 	modMat <- model.matrix(modTerms, modFrame)
 	modLabels <- attr(modTerms, "term.labels")
@@ -36,6 +37,8 @@ varpred <- function(mod, focal, isolate = FALSE
 	# Model matrix with progression of focal variable
 	varFrame <- modFrame[rep(1, steps), ]
 	varFrame[focalVar] <- vv
+	## FIXME: CHECK
+	varFrame <- model.frame(modTerms, varFrame, xlev = xlevels, drop.unused.levels = TRUE)
 	newMat <- model.matrix(modTerms, varFrame)
 
 	## Better way to do this?
